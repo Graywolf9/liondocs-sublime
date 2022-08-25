@@ -1,6 +1,6 @@
-import os
+import os, subprocess
 import re
-from pathlib import Path
+# from pathlib import Path
 
 import sublime
 import sublime_plugin
@@ -18,9 +18,9 @@ TRANSLATED_CONTENT_PATH = None
 LANG_CODE = None
 ALERTS = None
 
-cpath = str(Path("\\content"))
-tcpath = str(Path("\\translated-content"))
-uspath = str(Path("\\en-us"))
+# cpath = str(Path("\\content"))
+# tcpath = str(Path("\\translated-content"))
+# uspath = str(Path("\\en-us"))
 
 valid_exts = ('.md', '.html')
 exts_dict = {'.md': '.html', '.html': '.md'}
@@ -52,45 +52,24 @@ class getshaCommand(sublime_plugin.TextCommand):
         self.view.insert(edit, self.view.sel()[0].begin(), string)
 
     def run(self, edit, mode):
-        # TODO: Just work when function is called in a file
-        # inside content or translated-content
-        target_file = Path(self.view.file_name())
-        file_ext = target_file.suffix
-
-        if file_ext in valid_exts:
-            # replace translated-content with content
-            tmp = str(target_file).replace(tcpath, cpath)
-
-            # replace en-us with target language
-            lang = str(Path("\\" + LANG_CODE))
-            target_in_content = Path(tmp.replace(lang, uspath))
-
-            meta = None
-
-            if target_in_content.is_file():
-                shaman = Shaman(target_in_content, CONTENT_PATH)  # here?
-                meta = shaman.get_file_sha(returnas='meta')
-            else:
-                # try switching extension for find target file
-                switch_ext = target_in_content.with_suffix(exts_dict[file_ext])
-                target_in_content = switch_ext
-
-                if target_in_content.is_file():
-                    shaman = Shaman(target_in_content, CONTENT_PATH)
-                    meta = shaman.get_file_sha(returnas='meta')
-                else:
-                    # ??? File doesn't exist in content? Update content repo
-                    # raise Exception('File does not exist in content?')
-                    sublime.message_dialog("File does not exist in content?"
-                                           " Please sync your forks")
-
-            if mode == 'insert':
-                self.__insert_in_cursor(edit, meta)
-
-            elif mode == 'clipboard':
-                sublime.set_clipboard(meta)
-
-                alert("SHA successfully copied to clipboard!")
+        cfile = self.view.window().active_view().file_name()
+        slash = (('/','\\')[os.name == 'nt'])
+        #ofile = cfile.replace('/translated-content/','/content/').replace('/es/','/en-us/')
+        ofile = CONTENT_PATH + '/files/en-us/' + cfile.split(slash + LANG_CODE + slash)[1]
+        if os.name == 'nt':
+          ofile = ofile.replace('/','\\')
+        os.chdir(CONTENT_PATH)
+        print('Getting sha from: ' + ofile)
+        command = "git log -1 --pretty=%H " + ofile
+        last_commit = subprocess.check_output(command, shell=True)
+        last_commit = last_commit.decode().strip()
+        print('Sha: ' + last_commit)
+        print('Sha copied to clipboard: ' + last_commit)
+        sublime.set_clipboard(last_commit)
+        print('Putting sha in cursor position...')
+        print('File: ' + cfile)
+        base = "l10n:\n  sourceCommit: {0}".format(last_commit)
+        self.__insert_in_cursor(edit, base)
 
 
 class transferCommand(sublime_plugin.TextCommand):
